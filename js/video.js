@@ -142,7 +142,8 @@ function setHL(el){clearHL(false);if(!el)return;
  if(acc)svg.style.transform='scale('+(1/1.035)+')';   // same start size as the un-zoomed card
  layer.appendChild(svg);
  if(acc){void svg.getBoundingClientRect();svg.style.transition='transform .55s cubic-bezier(.2,.8,.2,1)';svg.style.transform='scale(1)'}   // zooms exactly with the card
- el.classList.add('vhl');hl={el,ol:svg}}
+ el.classList.add('vhl');
+ hl={el,ol:svg}}
 
 /* ---------- step 3: pick a box, set its timestamp ---------- */
 let sel=-1,editIdx=1,tmr=[],hots=[],trk=0;
