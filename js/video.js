@@ -88,8 +88,13 @@ function setHL(el){clearHL(false);if(!el)return;
  const rad=(parseFloat(getComputedStyle(el).borderTopLeftRadius)||20)+8;
  const svg=document.createElementNS(NS,'svg');svg.setAttribute('class','vol');svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
  Object.assign(svg.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px',color:colorOf(el)});
- const r=document.createElementNS(NS,'rect');[['x',1.5],['y',1.5],['width',w-3],['height',h-3],['rx',rad],['pathLength',1]].forEach(([k,v])=>r.setAttribute(k,v));
- svg.appendChild(r);layer.appendChild(svg);
+ const x0=2,y0=2,x1=w-2,y1=h-2,r=Math.min(rad,(h-4)/2-1),ym=h/2;
+ // starts on the LEFT edge (thick, like the card's accent bar) then the thin outline runs out of it along the top and bottom and meets on the right
+ const D={l1:`M${x0} ${ym}L${x0} ${y0+r}`,l2:`M${x0} ${ym}L${x0} ${y1-r}`,
+  t:`M${x0} ${y0+r}A${r} ${r} 0 0 1 ${x0+r} ${y0}L${x1-r} ${y0}A${r} ${r} 0 0 1 ${x1} ${y0+r}L${x1} ${ym}`,
+  b:`M${x0} ${y1-r}A${r} ${r} 0 0 0 ${x0+r} ${y1}L${x1-r} ${y1}A${r} ${r} 0 0 0 ${x1} ${y1-r}L${x1} ${ym}`};
+ Object.entries(D).forEach(([k,d])=>{const q=document.createElementNS(NS,'path');q.setAttribute('d',d);q.setAttribute('pathLength',1);q.setAttribute('class',k[0]);svg.appendChild(q)});
+ layer.appendChild(svg);
  el.classList.add('vhl');hl={el,ol:svg}}
 
 /* ---------- step 3: pick a box, set its timestamp ---------- */
