@@ -19,6 +19,7 @@ const cum=d=>{let a=0;return d.map(x=>{const r=a;a+=x;return r})};
 let cfg;try{cfg=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!cfg||!Array.isArray(cfg.st)||cfg.st.length!==N){cfg={total:180,st:cum(split(180)),base:180,marks:{}}}
 if(typeof cfg.vol!=='number')cfg.vol=.8;
+if(typeof cfg.load!=='number')cfg.load=5;   // intro loading bar length in seconds (0 = off)
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg))}catch(e){}};
 /* ---------- music (optional mp3, remembered in this browser) ---------- */
 const AU=new Audio();AU.preload='auto';AU.loop=true;let audName='';
@@ -45,6 +46,15 @@ const layer=mk('div');layer.id='vlayer';stageEl.appendChild(layer);
 const nav=document.getElementById('nav');
 const btn=mk('button',null,'&#9654; VIDEO');btn.id='vd';btn.title='Video mode (V)';nav.insertBefore(btn,nav.firstChild);
 const modal=mk('div','vm');document.body.appendChild(modal);
+const vl=mk('div','vload','<span class="lb"></span><div class="tr"><i class="fl"></i></div>');S[0].appendChild(vl);
+const vfl=vl.querySelector('.fl'),vlb=vl.querySelector('.lb');
+/* realistic loading: quick start, bursts, slow crawls and a couple of short stalls, always landing on 100% exactly when the time is up */
+const LC=[[0,0],[.05,.07],[.14,.19],[.19,.2],[.3,.41],[.36,.43],[.40,.43],[.43,.44],[.55,.69],[.62,.71],[.70,.71],[.74,.72],[.84,.9],[.92,.94],[.95,.95],[.975,.99],[1,1]];
+const loadCurve=p=>{for(let k=1;k<LC.length;k++){if(p<=LC[k][0]){const [x0,y0]=LC[k-1],[x1,y1]=LC[k],u=(p-x0)/(x1-x0);return y0+(y1-y0)*(u*u*(3-2*u)*.35+u*.65)}}return 1};
+function loadUpdate(t){const L=Math.min(cfg.load,durOf(0));if(!(L>0)){vl.classList.remove('on');return}
+ const p=clamp(t/L,0,1),e=loadCurve(p),n=Math.floor(e*100);vfl.style.width=(e*100)+'%';
+ vlb.innerHTML=n>=100?'READY &middot; ENTER THE RIFT':'LOADING THE RIFT &middot; '+n+'%';vl.classList.toggle('on',t<L+.9)}
+function loadHide(){vl.classList.remove('on');vfl.style.width='0'}
 const bar=mk('div');bar.id='vbar';document.body.appendChild(bar);
 const cd=mk('div');cd.id='vcd';document.body.appendChild(cd);
 const toastEl=mk('div');toastEl.id='vtoast';document.body.appendChild(toastEl);
@@ -65,6 +75,8 @@ function openSetup(){
   <div class="tot"><input type="number" id="m-min" min="0" max="59" value="${tm}"><em>min</em><input type="number" id="m-sec" min="0" max="59" value="${ts}"><em>sec</em></div>
   <h4><span>2</span>WHEN DOES EACH SLIDE START? (m:ss ON THE VIDEO CLOCK)</h4>
   <div class="vrows" id="m-rows"></div>
+  <h4><span>&#8987;</span>INTRO LOADING BAR</h4>
+  <div class="tot"><input type="number" id="m-load" min="0" max="120" step="1" value="${cfg.load}"><em>sec</em><span class="fn" id="m-lh" style="color:var(--mut);font-size:12px"></span></div>
   <h4><span>&#9835;</span>MUSIC (OPTIONAL)</h4>
   <div class="vmusic"><label class="vbtn" for="m-file">Choose MP3&hellip;</label><input type="file" id="m-file" accept="audio/*,.mp3" hidden>
    <span class="fn" id="m-fn">${audName||'No music chosen'}</span><button class="vbtn" id="m-prev">&#9654; Preview</button><button class="vbtn" id="m-rm">Remove</button>
@@ -81,8 +93,10 @@ function openSetup(){
  const inputs=()=>[...rows.querySelectorAll('input')];
  function refresh(){
   modal.querySelector('#m-sum').innerHTML=`Video length <b>${fmt(cfg.total)}</b> &nbsp;&middot;&nbsp; last slide ends at the end`;
+  modal.querySelector('#m-lh').textContent='Fills across the title slide (max '+durOf(0)+'s, the title slide\'s length). 0 = off.';
   [...rows.children].forEach((r,i)=>{r.querySelector('small').textContent=bx(i)+' \u00b7 '+fmt(cfg.st[i])+'\u2013'+fmt(endOf(i))+' ('+durOf(i)+'s)'})}
  function setTotal(){const m=clamp(Math.round(+modal.querySelector('#m-min').value)||0,0,59),s=clamp(Math.round(+modal.querySelector('#m-sec').value)||0,0,59);cfg.total=Math.max(N*3,m*60+s);fixStarts();save();sync()}
+ modal.querySelector('#m-load').oninput=e=>{cfg.load=clamp(Math.round(+e.target.value)||0,0,120);save()};
  modal.querySelector('#m-min').oninput=setTotal;modal.querySelector('#m-sec').oninput=setTotal;
  const sync=()=>{inputs().forEach((x,i)=>x.value=fmtT(cfg.st[i]));refresh();save()};
  modal.querySelector('#m-split').onclick=()=>{setTotal();cfg.st=cum(split(cfg.total));cfg.base=cfg.total;fixStarts();sync()};
@@ -118,13 +132,16 @@ function setHL(el){clearHL(false);if(!el)return;
  const x0=1,y0=1,x1=w-1,y1=h-1,r=Math.min(rad,(h-2)/2-1),ym=h/2;
  /* accent cards: the left bar is the card's own and stays as it is; the thin outline starts where its top and bottom curves end and spreads right.
     other boxes: a thick line draws on the left first, then the thin outline runs out of it. */
- const D=acc?{t:`M${x0+r} ${y0}L${x1-r} ${y0}A${r} ${r} 0 0 1 ${x1} ${y0+r}L${x1} ${ym}`,
-              b:`M${x0+r} ${y1}L${x1-r} ${y1}A${r} ${r} 0 0 0 ${x1} ${y1-r}L${x1} ${ym}`}
+ const sx=x0+r*.134,sy=r*.5;   // start 30deg up the corner, where the card's own bar is still ~4px thick, so the outline grows out of it with no gap
+ const D=acc?{t:`M${sx} ${y0+r-sy}A${r} ${r} 0 0 1 ${x0+r} ${y0}L${x1-r} ${y0}A${r} ${r} 0 0 1 ${x1} ${y0+r}L${x1} ${ym}`,
+              b:`M${sx} ${y1-r+sy}A${r} ${r} 0 0 0 ${x0+r} ${y1}L${x1-r} ${y1}A${r} ${r} 0 0 0 ${x1} ${y1-r}L${x1} ${ym}`}
   :{l1:`M${x0} ${ym}L${x0} ${y0+r}`,l2:`M${x0} ${ym}L${x0} ${y1-r}`,
   t:`M${x0} ${y0+r}A${r} ${r} 0 0 1 ${x0+r} ${y0}L${x1-r} ${y0}A${r} ${r} 0 0 1 ${x1} ${y0+r}L${x1} ${ym}`,
   b:`M${x0} ${y1-r}A${r} ${r} 0 0 0 ${x0+r} ${y1}L${x1-r} ${y1}A${r} ${r} 0 0 0 ${x1} ${y1-r}L${x1} ${ym}`};
  Object.entries(D).forEach(([k,d])=>{const q=document.createElementNS(NS,'path');q.setAttribute('d',d);q.setAttribute('pathLength',1);q.setAttribute('class',k[0]+(acc?' acc':''));svg.appendChild(q)});
+ if(acc)svg.style.transform='scale('+(1/1.035)+')';   // same start size as the un-zoomed card
  layer.appendChild(svg);
+ if(acc){void svg.getBoundingClientRect();svg.style.transition='transform .55s cubic-bezier(.2,.8,.2,1)';svg.style.transform='scale(1)'}   // zooms exactly with the card
  el.classList.add('vhl');hl={el,ol:svg}}
 
 /* ---------- step 3: pick a box, set its timestamp ---------- */
@@ -193,10 +210,10 @@ function tick(now){
  if(P.aud&&!V.paused){const left=P.total-P.e;AU.volume=cfg.vol*Math.min(1,left/2)}   // fade out over the last 2 s
  let k=0;while(k<P.starts.length-1&&P.e>=P.starts[k+1])k++;
  if(k!==P.k){P.k=k;clearHL(false);go(P.from+k);P.evs=evsFor(P.from+k);P.hi=-2}
- const local=P.e-P.starts[k];let h=-1;P.evs.forEach((v,j)=>{if(v.t<=local)h=j});
+ const local=P.e-P.starts[k];if(P.from+k===0)loadUpdate(local);else loadHide();let h=-1;P.evs.forEach((v,j)=>{if(v.t<=local)h=j});
  if(h!==P.hi){P.hi=h;setHL(h>=0?P.evs[h].el:null)}
  P.raf=requestAnimationFrame(tick)}
-function stopPlay(){if(P){cancelAnimationFrame(P.raf);clearInterval(P.cdTimer)}P=null;AU.pause();AU.currentTime=0;AU.volume=cfg.vol;cd.className='';clearHL(true);document.body.classList.remove('vplay');
+function stopPlay(){loadHide();if(P){cancelAnimationFrame(P.raf);clearInterval(P.cdTimer)}P=null;AU.pause();AU.currentTime=0;AU.volume=cfg.vol;cd.className='';clearHL(true);document.body.classList.remove('vplay');
  if(V.fsEntered&&document.fullscreenElement){try{document.exitFullscreen()}catch(e){}}V.fsEntered=false}
 function finish(){const r=V.ret;setTimeout(()=>{if(V.mode!=='play')return;stopPlay();back(r)},900);cancelAnimationFrame(P.raf);P.raf=0}
 function back(r){if(r==='edit')openEdit(cur());else if(r==='setup')openSetup();else V.mode='idle'}
